@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package example.library;
+
+// Author service
+service AuthorService {
+	// Add creates new Author.
+	rpc Add (AuthorAddRequest) returns (Author);
+	// Get returns an Author specified by given request.
+	rpc Get (AuthorGetRequest) returns (Author);
+	// This line will be in the last of this service after merge.
+}
+
+service BookService {
+	rpc Add (BookAddRequest) returns (Book);
+	rpc Get (BookGetRequest) returns (Book);
+}
+
+
+message AuthorAddRequest {
+	optional bytes id = 1;
+	string alias = 2;
+}
+
+message AuthorGetRequest {
+	oneof key {
+		bytes id = 1;
+		string alias = 2;
+	}
+}
+
+
+message BookAddRequest {
+	optional bytes id = 1;
+	string title = 3;
+}
+
+message BookGetRequest {
+	oneof key {
+		bytes id = 1;
+	}
+}

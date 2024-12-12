@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package example.library;
+
+service AuthorService {
+	rpc Put (AuthorPutRequest) returns (Author);
+}
+
+service BookService {
+	rpc Put (BookPutRequest) returns (Book);
+}
+
+message BookPutRequest {
+	optional bytes id = 1;
+	string alias = 2;
+}
+
+message AuthorPutRequest {
+	optional bytes id = 1;
+	string alias = 2;
+}
