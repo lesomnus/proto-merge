@@ -2,6 +2,14 @@ syntax = "proto3";
 
 package example.library;
 
+option (foo.bar) = {
+	baz: {}
+	burgers: {
+		royale_with_cheese: {}
+		le_bic_mac: {}
+	}
+};
+
 // Author service
 service AuthorService {
 	// Add creates new Author.
@@ -18,7 +26,13 @@ service BookService {
 
 
 message AuthorAddRequest {
-	optional bytes id = 1;
+	optional bytes id = 1 [
+		(foo.bar) = {
+			enum: ENUM_VALUE
+			bool: true
+			string: ""
+		}
+	];
 	string alias = 2;
 }
 
