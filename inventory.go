@@ -170,6 +170,7 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	}
 
 	// Print messages
+	msgs_written := map[string]bool{}
 	for _, ms := range msgs {
 		ms_a := ms[:2]
 		ms_b := ms[2:]
@@ -178,12 +179,19 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			if m == nil {
 				continue
 			}
+
+			msgs_written[m.Name] = true
 			mv(m.EndPos)
 		}
 		for _, m := range ms_b {
 			if m == nil {
 				continue
 			}
+			_, ok := msgs_written[m.Name]
+			if ok {
+				continue
+			}
+			msgs_written[m.Name] = true
 			w.Write(b.Content[m.Pos.Offset:m.EndPos.Offset])
 		}
 	}
