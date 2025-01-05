@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"os"
-	"slices"
 	"unicode"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -15,10 +15,7 @@ type Inventory struct {
 	Content []byte // original file content.
 	Proto   *Proto
 
-	// Sentry which is linked to first Service.
-	// List of Services like H-S-E-S-E... where E is right next Entry of previous S.
-	Head HorizontalListNode
-
+	Imports  map[string]*Import  // by package.
 	Services map[string]*Service // by name.
 	Messages map[string]*Message // by name.
 }
@@ -41,27 +38,18 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 		Content: content,
 		Proto:   v,
 
-		Head: &horizontalListNode{},
-
+		Imports:  map[string]*Import{},
 		Services: map[string]*Service{},
 		Messages: map[string]*Message{},
 	}
-	last := i.Head
-	link := false
 	for _, e := range v.Entries {
-		if link {
-			link = false
-			last.SetNext(e)
-			last = e
-		}
-		if v := e.Service; v != nil {
-			i.Services[v.Name] = v
-			link = true
-			last.SetNext(v)
-			last = v
-		}
-		if v := e.Message; v != nil {
-			i.Messages[v.Name] = v
+		switch {
+		case e.Import != nil:
+			i.Imports[e.Import.Package] = e.Import
+		case e.Service != nil:
+			i.Services[e.Service.Name] = e.Service
+		case e.Message != nil:
+			i.Messages[e.Message.Name] = e.Message
 		}
 	}
 
@@ -69,128 +57,139 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 }
 
 func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
-	// .[][1:] will be printer right after .[][0].
-	mss := [][]*Message{}
+	// First two messages for each array are from the `a` and rest are from the `b`.
+	msgs := [][]*Message{{nil, nil}}
 
-	n := a.Head.GetNext()
-	p := lexer.Position{}
+	last := lexer.Position{}
 	mv := func(until lexer.Position) {
-		v := a.Content[p.Offset:until.Offset]
-		v = bytes.TrimRightFunc(v, unicode.IsSpace)
+		if last.Offset > until.Offset {
+			return
+		}
+
+		v := a.Content[last.Offset:until.Offset]
+		if i := bytes.LastIndexFunc(v, func(r rune) bool {
+			return !unicode.IsSpace(r)
+		}); i > 0 {
+			until.Offset -= (len(v) - i - 1)
+			v = a.Content[last.Offset:until.Offset]
+		}
+
 		w.Write(v)
-		p = until
+		last = until
 	}
-	lf := func() {
-		w.Write([]byte("\n"))
-	}
+	lf := func() { w.Write([]byte("\n")) }
+	tab := func() { w.Write([]byte("\t")) }
 
-	// Print services.
-	for n != nil {
-		s := n.(*Service)
-		n = n.GetNext()
-		e := n.(*Entry)
-		n = n.GetNext()
+	for _, e := range a.Proto.Entries {
+		switch {
+		case e.Option != nil:
+			// Merge imports before option.
+			imports := maps.Clone(b.Imports)
+			for n := range a.Imports {
+				delete(imports, n)
+			}
 
-		s_, ok := b.Services[s.Name]
-		if !ok {
-			continue
-		}
-		if len(s.Entry) == 0 || len(s_.Entry) == 0 {
-			continue
-		}
-
-		// Merge rpcs.
-		l := s.Entry[len(s.Entry)-1]
-		if p.Offset != 0 {
+			mv(e.Pos)
 			lf()
-		}
-		mv(l.EndPos)
-		{
-			w.Write([]byte(";\n"))
 
-			l_ := s_.Entry[len(s_.Entry)-1]
-			w.Write([]byte("\t")) // TODO: maybe spaces.
-			w.Write(b.Content[s_.Entry[0].Pos.Offset:l_.EndPos.Offset])
-			_ = e
-		}
-		mv(s.EndPos)
-		lf()
-
-		// Collect rpc messages that are needed to be merged.
-		ms := []*Message{nil}
-		for _, e := range s.Entry {
-			if e.Method == nil {
-				continue
+			for _, v := range imports {
+				w.Write(b.Content[v.Pos.Offset:v.EndPos.Offset])
 			}
-			if e.Method.Request != nil {
-				m, ok := a.Messages[e.Method.Request.Reference]
-				if ok {
-					ms[0] = m
-				}
-			}
-			if e.Method.Response != nil {
-				m, ok := a.Messages[e.Method.Response.Reference]
-				if ok {
-					ms[0] = m
-				}
-			}
-		}
-		for _, e := range s_.Entry {
-			if e.Method == nil {
+		case e.Service != nil:
+			// Merge service.
+			v, ok := b.Services[e.Service.Name]
+			if !ok {
 				continue
 			}
 
-			add := func(ref string) error {
-				if m, ok := b.Messages[ref]; !ok {
-					// Message defined in the other file (e.g. well known messages).
-					return nil
-				} else if _, ok := a.Messages[m.Name]; ok {
-					return fmt.Errorf("duplicated message: %s", m.Name)
-				} else {
-					ms = append(ms, m)
+			// Print entries from `a`.
+			u := e.Service.Entry[len(e.Service.Entry)-1]
+			mv(u.EndPos)
+			lf()
+			tab()
+
+			// Print entries from `b`.
+			x := v.Pos
+			y := v.Entry[len(v.Entry)-1].EndPos
+			for {
+				o := x.Offset
+				x.Offset++
+				if b.Content[o] == '{' {
+					break
 				}
-				return nil
 			}
 
-			if err := add(e.Method.Request.Reference); err != nil {
-				return err
+			w.Write(b.Content[x.Offset:y.Offset])
+
+			// Print service close.
+			mv(e.Service.EndPos)
+
+			// Collect messages to be printed.
+			for _, se := range e.Service.Entry {
+				v := se.Method
+				if v == nil {
+					continue
+				}
+
+				msgs = append(msgs, []*Message{
+					a.Messages[v.Request.Reference],
+					a.Messages[v.Request.Reference],
+				})
 			}
-			if err := add(e.Method.Response.Reference); err != nil {
-				return err
+
+			// Collect messages to be merged into.
+			ms := msgs[len(msgs)-1]
+			for _, e := range v.Entry {
+				v := e.Method
+				if v == nil {
+					continue
+				}
+
+				if m := b.Messages[v.Request.Reference]; m != nil {
+					for _, m_nested := range m.Entries {
+						if m_nested.Field == nil {
+							continue
+						}
+						ms = append(ms, b.Messages[m_nested.Field.Type.Reference])
+					}
+				}
+				ms = append(ms, b.Messages[v.Request.Reference])
+
+				if m := b.Messages[v.Response.Reference]; m != nil {
+					for _, m_nested := range m.Entries {
+						if m_nested.Field == nil {
+							continue
+						}
+						ms = append(ms, b.Messages[m_nested.Field.Type.Reference])
+					}
+				}
+				ms = append(ms, b.Messages[v.Response.Reference])
 			}
-		}
-		if len(ms) > 1 {
-			// There are messages to be merged into.
-			mss = append(mss, ms)
+			msgs[len(msgs)-1] = ms
 		}
 	}
 
-	// Print messages.
-	slices.SortFunc(mss, func(a, b []*Message) int {
-		return a[0].Pos.Offset - b[0].Pos.Offset
-	})
-	visited := map[string]bool{}
-	for _, ms := range mss {
-		lf()
-		lf()
-		if m := ms[0]; p.Offset < m.Pos.Offset {
-			// print message in `a` if it is not printed yet.
+	// Print messages
+	for _, ms := range msgs {
+		ms_a := ms[:2]
+		ms_b := ms[2:]
+
+		for _, m := range ms_a {
+			if m == nil {
+				continue
+			}
 			mv(m.EndPos)
-			lf()
 		}
-		lf()
-		for _, m := range ms[1:] {
-			if visited[m.Name] {
+		for _, m := range ms_b {
+			if m == nil {
 				continue
 			}
-			visited[m.Name] = true
-
-			w.Write(bytes.TrimRightFunc(b.Content[m.Pos.Offset:m.EndPos.Offset], unicode.IsSpace))
-			lf()
+			w.Write(b.Content[m.Pos.Offset:m.EndPos.Offset])
 		}
 	}
 
-	w.Write(a.Content[p.Offset:])
+	// Write out rest of the content.
+	w.Write(a.Content[last.Offset:])
 
 	return nil
 }

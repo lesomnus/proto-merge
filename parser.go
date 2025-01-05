@@ -1,26 +1,11 @@
 package main
 
 import (
+	"text/scanner"
+
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 )
-
-type HorizontalListNode interface {
-	GetNext() HorizontalListNode
-	SetNext(e HorizontalListNode)
-}
-
-type horizontalListNode struct {
-	Next HorizontalListNode
-}
-
-func (n *horizontalListNode) GetNext() HorizontalListNode {
-	return n.Next
-}
-
-func (n *horizontalListNode) SetNext(e HorizontalListNode) {
-	n.Next = e
-}
 
 type Proto struct {
 	Pos lexer.Position
@@ -29,17 +14,23 @@ type Proto struct {
 }
 
 type Entry struct {
-	horizontalListNode
 	Pos lexer.Position
 
 	Syntax  string   `parser:"  'syntax' '=' @String"`
 	Package string   `parser:"| 'package' @(Ident ( '.' Ident )*)"`
-	Import  string   `parser:"| 'import' @String"`
+	Import  *Import  `parser:"| @@"`
 	Message *Message `parser:"| @@"`
 	Service *Service `parser:"| @@"`
 	Enum    *Enum    `parser:"| @@"`
 	Option  *Option  `parser:"| 'option' @@"`
 	Extend  *Extend  `parser:"| @@"`
+}
+
+type Import struct {
+	Pos    lexer.Position
+	EndPos lexer.Position
+
+	Package string `parser:"'import' @String ';'"`
 }
 
 type Option struct {
@@ -108,7 +99,6 @@ type Extend struct {
 }
 
 type Service struct {
-	horizontalListNode
 	Pos    lexer.Position
 	EndPos lexer.Position
 
@@ -121,12 +111,13 @@ type ServiceEntry struct {
 	EndPos lexer.Position
 
 	Option *Option `parser:"  'option' @@"`
-	Method *Method `parser:"| @@"`
+	Method *Method `parser:"| @@ ';'"`
 }
 
 type Method struct {
 	Pos lexer.Position
 
+	Comment           []string  `parser:"@Comment*"`
 	Name              string    `parser:"'rpc' @Ident"`
 	StreamingRequest  bool      `parser:"'(' @'stream'?"`
 	Request           *Type     `parser:"    @@ ')'"`
@@ -270,4 +261,10 @@ type MapType struct {
 	Value *Type `parser:"',' @@ '>'"`
 }
 
-var Parser = participle.MustBuild[Proto](participle.UseLookahead(2))
+var Parser = participle.MustBuild[Proto](
+	participle.Lexer(lexer.NewTextScannerLexer(func(s *scanner.Scanner) {
+		s.Mode ^= scanner.SkipComments
+	})),
+	participle.UseLookahead(2),
+	participle.Elide("Comment"),
+)

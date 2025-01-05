@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package example.library;
 
+import "foo.proto";
+
 option (foo.bar) = {
 	baz: {}
 	burgers: {
@@ -9,6 +11,10 @@ option (foo.bar) = {
 		le_bic_mac: {}
 	}
 };
+
+service FooService {
+	rpc Add(FooADdRequest) returns (Foo);
+}
 
 // Author service
 service AuthorService {

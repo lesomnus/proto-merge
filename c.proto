@@ -2,6 +2,11 @@ syntax = "proto3";
 
 package example.library;
 
+import "foo.proto";
+import "bar.proto";
+
+
+
 option (foo.bar) = {
 	baz: {}
 	burgers: {
@@ -10,20 +15,31 @@ option (foo.bar) = {
 	}
 };
 
+service FooService {
+	rpc Add(FooADdRequest) returns (Foo);
+}
+
 // Author service
 service AuthorService {
 	// Add creates new Author.
 	rpc Add (AuthorAddRequest) returns (Author);
 	// Get returns an Author specified by given request.
 	rpc Get (AuthorGetRequest) returns (Author);
+	
+	// Auth Put
+	// AASDF
 	rpc Put (AuthorPutRequest) returns (Author);
+
 	// This line will be in the last of this service after merge.
 }
 
 service BookService {
 	rpc Add (BookAddRequest) returns (Book);
 	rpc Get (BookGetRequest) returns (Book);
+	
+	// Book Put
 	rpc Put (BookPutRequest) returns (Book);
+
 }
 
 
@@ -45,11 +61,15 @@ message AuthorGetRequest {
 	}
 }
 
+
+message AuthorExtra {
+	string pizza = 1;
+}
 message AuthorPutRequest {
 	optional bytes id = 1;
 	string alias = 2;
+	AuthorExtra extra = 3;
 }
-
 
 message BookAddRequest {
 	optional bytes id = 1;
@@ -61,8 +81,8 @@ message BookGetRequest {
 		bytes id = 1;
 	}
 }
-
 message BookPutRequest {
 	optional bytes id = 1;
 	string alias = 2;
 }
+

@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package example.library;
+
+message Bar {
+	string cheese = 1;
+}

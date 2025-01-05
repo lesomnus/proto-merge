@@ -2,11 +2,17 @@ syntax = "proto3";
 
 package example.library;
 
+import "foo.proto";
+import "bar.proto";
+
 service AuthorService {
+	// Auth Put
+	// AASDF
 	rpc Put (AuthorPutRequest) returns (Author);
 }
 
 service BookService {
+	// Book Put
 	rpc Put (BookPutRequest) returns (Book);
 }
 
@@ -18,4 +24,9 @@ message BookPutRequest {
 message AuthorPutRequest {
 	optional bytes id = 1;
 	string alias = 2;
+	AuthorExtra extra = 3;
+}
+
+message AuthorExtra {
+	string pizza = 1;
 }
