@@ -3,6 +3,7 @@ syntax = "proto3";
 package example.library;
 
 import "foo.proto";
+import "baz.proto";
 
 option (foo.bar) = {
 	baz: {}

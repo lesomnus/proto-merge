@@ -6,6 +6,8 @@ import (
 	"io"
 	"maps"
 	"os"
+	"slices"
+	"strings"
 	"unicode"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -83,18 +85,27 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	for _, e := range a.Proto.Entries {
 		switch {
 		case e.Option != nil:
-			// Merge imports before option.
+			// Merge imports.
 			imports := maps.Clone(b.Imports)
-			for n := range a.Imports {
-				delete(imports, n)
+			for n, v := range a.Imports {
+				imports[n] = v
 			}
 
-			mv(e.Pos)
+			// Sort by package.
+			vs := slices.Collect(maps.Values(b.Imports))
+			slices.SortFunc(vs, func(a *Import, b *Import) int {
+				return strings.Compare(a.Package, b.Package)
+			})
+
+			// Skip move
+			last = e.Pos
 			lf()
 
-			for _, v := range imports {
-				w.Write(b.Content[v.Pos.Offset:v.EndPos.Offset])
+			for _, v := range vs {
+				w.Write([]byte(fmt.Sprintf("import %s;\n", v.Package)))
 			}
+			lf()
+
 		case e.Service != nil:
 			// Merge service.
 			v, ok := b.Services[e.Service.Name]

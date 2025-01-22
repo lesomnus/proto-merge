@@ -29,22 +29,24 @@ func TestParser(t *testing.T) {
 
 	test(func(e *Entry) { require.Equal(`"proto3"`, e.Syntax) })
 	test(func(e *Entry) { require.Equal(`example.library`, e.Package) })
+	test(func(e *Entry) { require.Equal(`"foo.proto"`, e.Import.Package) })
+	test(func(e *Entry) { require.Equal(`"baz.proto"`, e.Import.Package) })
 	test(func(e *Entry) { require.Equal(`foo.bar`, e.Option.Name) })
 	test(func(e *Entry) {
 		s := e.Service
 		require.NotNil(s)
-		require.Equal("AuthorService", s.Name)
-		require.Equal(14, s.Pos.Line)
+		require.Equal("FooService", s.Name)
+		require.Equal(16, s.Pos.Line)
 		require.Equal(1, s.Pos.Column)
-		require.Equal(155, s.Pos.Offset)
-		require.Equal(22, s.EndPos.Line) // Where the next entry begin.
+		require.Equal(178, s.Pos.Offset)
+		require.Equal(20, s.EndPos.Line) // Where the next entry begin.
 		require.NotEmpty(s.Entry)
 
-		r := s.Entry[len(s.Entry)-1]
-		require.Equal("Get", r.Method.Name)
-		require.Equal(18, r.Pos.Line)
+		r := s.Entry[0]
+		require.Equal("Add", r.Method.Name)
+		require.Equal(17, r.Pos.Line)
 		require.Equal(2, r.Pos.Column) // There is an indent.
-		require.Equal(308, r.Pos.Offset)
-		require.Equal(351, r.EndPos.Offset) // Where the semicolon is.
+		require.Equal(200, r.Pos.Offset)
+		require.Equal(238, r.EndPos.Offset) // Where the semicolon is.
 	})
 }

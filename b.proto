@@ -4,6 +4,8 @@ package example.library;
 
 import "foo.proto";
 import "bar.proto";
+import "baz.proto";
+import "qux.proto";
 
 service AuthorService {
 	// Auth Put
