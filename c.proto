@@ -30,6 +30,7 @@ service AuthorService {
 	// AASDF
 	rpc Put (AuthorPutRequest) returns (Author);
 	rpc Pot (AuthorPutRequest) returns (Author);
+	rpc List (AuthorListRequest) returns (AuthorListResponse);
 
 	// This line will be in the last of this service after merge.
 }
@@ -63,15 +64,31 @@ message AuthorGetRequest {
 }
 
 
-message AuthorExtra {
-	string pizza = 1;
-}
 message AuthorPutRequest {
 	optional bytes id = 1;
 	string alias = 2;
 	AuthorExtra extra = 3;
 }
 
+message AuthorExtra {
+	string pizza = 1;
+}
+
+message AuthorListRequest {
+	AuthorFilter filter = 1;
+}
+
+message AuthorFilter {
+	oneof kind {
+		bytes id = 1;
+		string alias = 2;
+		AuthorFilterByFoo foo = 3;
+	}
+}
+
+message AuthorListResponse {
+	repeated Author items = 1;
+}
 message BookAddRequest {
 	optional bytes id = 1;
 	string title = 3;

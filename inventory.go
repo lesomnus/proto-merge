@@ -162,25 +162,8 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 					continue
 				}
 
-				if m := b.Messages[v.Request.Reference]; m != nil {
-					for _, m_nested := range m.Entries {
-						if m_nested.Field == nil {
-							continue
-						}
-						ms = append(ms, b.Messages[m_nested.Field.Type.Reference])
-					}
-				}
-				ms = append(ms, b.Messages[v.Request.Reference])
-
-				if m := b.Messages[v.Response.Reference]; m != nil {
-					for _, m_nested := range m.Entries {
-						if m_nested.Field == nil {
-							continue
-						}
-						ms = append(ms, b.Messages[m_nested.Field.Type.Reference])
-					}
-				}
-				ms = append(ms, b.Messages[v.Response.Reference])
+				ms = append(ms, collectMessagesRecursive(b.Messages, b.Messages[v.Request.Reference])...)
+				ms = append(ms, collectMessagesRecursive(b.Messages, b.Messages[v.Response.Reference])...)
 			}
 			msgs[len(msgs)-1] = ms
 		}
@@ -217,4 +200,40 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	w.Write(a.Content[last.Offset:])
 
 	return nil
+}
+
+func collectMessagesRecursive(pool map[string]*Message, m *Message) []*Message {
+	vs := []*Message{}
+	if m == nil || m.Entries == nil {
+		return vs
+	}
+
+	vs = append(vs, m)
+	for _, v := range m.Entries {
+		switch {
+		case v.Field != nil:
+			m := pool[v.Field.Type.Reference]
+			if m == nil {
+				continue
+			}
+
+			vs = append(vs, collectMessagesRecursive(pool, m)...)
+
+		case v.Oneof != nil:
+			for _, v_ := range v.Oneof.Entries {
+				if v_.Field == nil {
+					continue
+				}
+
+				m := pool[v_.Field.Type.Reference]
+				if m == nil {
+					continue
+				}
+
+				vs = append(vs, collectMessagesRecursive(pool, m)...)
+			}
+		}
+	}
+
+	return vs
 }

@@ -11,6 +11,7 @@ service AuthorService {
 	// AASDF
 	rpc Put (AuthorPutRequest) returns (Author);
 	rpc Pot (AuthorPutRequest) returns (Author);
+	rpc List (AuthorListRequest) returns (AuthorListResponse);
 }
 
 service BookService {
@@ -31,4 +32,22 @@ message AuthorPutRequest {
 
 message AuthorExtra {
 	string pizza = 1;
+}
+
+message AuthorFilterByFoo {}
+
+message AuthorFilter {
+	oneof kind {
+		bytes id = 1;
+		string alias = 2;
+		AuthorFilterByFoo foo = 3;
+	}
+}
+
+message AuthorListRequest {
+	AuthorFilter filter = 1;
+}
+
+message AuthorListResponse {
+	repeated Author items = 1;
 }
