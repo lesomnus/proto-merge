@@ -98,7 +98,7 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			}
 
 			// Sort by package.
-			vs := slices.Collect(maps.Values(b.Imports))
+			vs := slices.Collect(maps.Values(imports))
 			slices.SortFunc(vs, func(a *Import, b *Import) int {
 				return strings.Compare(a.Package, b.Package)
 			})

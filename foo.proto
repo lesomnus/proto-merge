@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package example.library;
-
-message Foo {
-	string cheese = 1;
-}

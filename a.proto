@@ -4,6 +4,7 @@ package example.library;
 
 import "foo.proto";
 import "baz.proto";
+import "bar.proto";
 
 option (foo.bar) = {
 	baz: {}
