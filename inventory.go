@@ -82,8 +82,14 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	lf := func() { w.Write([]byte("\n")) }
 	tab := func() { w.Write([]byte("\t")) }
 
+	is_import_hit := false
 	for _, e := range a.Proto.Entries {
 		switch {
+		case e.Import != nil && !is_import_hit:
+			is_import_hit = true
+			mv(e.Import.Pos)
+			lf()
+
 		case e.Option != nil:
 			// Merge imports.
 			imports := maps.Clone(b.Imports)

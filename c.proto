@@ -1,3 +1,6 @@
+syntax = "proto3";
+
+package example.library;
 
 import "bar.proto";
 import "baz.proto";
