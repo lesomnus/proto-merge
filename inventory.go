@@ -19,7 +19,7 @@ type Inventory struct {
 
 	Imports  map[string]*Import  // by package.
 	Services map[string]*Service // by name.
-	Messages map[string]*Message // by name.
+	Messages map[string]Posed    // by name, including enums.
 }
 
 func NewInventoryFromFile(filename string) (*Inventory, error) {
@@ -42,7 +42,7 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 
 		Imports:  map[string]*Import{},
 		Services: map[string]*Service{},
-		Messages: map[string]*Message{},
+		Messages: map[string]Posed{},
 	}
 	for _, e := range v.Entries {
 		switch {
@@ -52,6 +52,8 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 			i.Services[e.Service.Name] = e.Service
 		case e.Message != nil:
 			i.Messages[e.Message.Name] = e.Message
+		case e.Enum != nil:
+			i.Messages[e.Enum.Name] = e.Enum
 		}
 	}
 
@@ -60,7 +62,7 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 
 func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	// First two messages for each array are from the `a` and rest are from the `b`.
-	msgs := [][]*Message{{nil, nil}}
+	msgs := [][]Posed{{nil, nil}}
 
 	last := lexer.Position{}
 	mv := func(until lexer.Position) {
@@ -148,7 +150,7 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 					continue
 				}
 
-				msgs = append(msgs, []*Message{
+				msgs = append(msgs, []Posed{
 					a.Messages[v.Request.Reference],
 					a.Messages[v.Request.Reference],
 				})
@@ -180,19 +182,19 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 				continue
 			}
 
-			msgs_written[m.Name] = true
-			mv(m.EndPos)
+			msgs_written[m.Ident()] = true
+			mv(m.End())
 		}
 		for _, m := range ms_b {
 			if m == nil {
 				continue
 			}
-			_, ok := msgs_written[m.Name]
+			_, ok := msgs_written[m.Ident()]
 			if ok {
 				continue
 			}
-			msgs_written[m.Name] = true
-			w.Write(b.Content[m.Pos.Offset:m.EndPos.Offset])
+			msgs_written[m.Ident()] = true
+			w.Write(b.Content[m.Begin().Offset:m.End().Offset])
 		}
 	}
 
@@ -202,15 +204,23 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	return nil
 }
 
-func collectMessagesRecursive(pool map[string]*Message, m *Message) []*Message {
-	vs := []*Message{}
-	if m == nil || m.Entries == nil {
+func collectMessagesRecursive(pool map[string]Posed, m Posed) []Posed {
+	vs := []Posed{}
+	if m == nil {
 		return vs
 	}
 
 	vs = append(vs, m)
-	for _, v := range m.Entries {
+	m_, ok := m.(*Message)
+	if !ok {
+		return vs
+	}
+
+	for _, v := range m_.Entries {
 		switch {
+		case v.Enum != nil:
+			vs = append(vs, v.Enum)
+
 		case v.Field != nil:
 			m := pool[v.Field.Type.Reference]
 			if m == nil {

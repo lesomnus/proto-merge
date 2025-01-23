@@ -13,6 +13,12 @@ type Proto struct {
 	Entries []*Entry `parser:"( @@ ';'* )*"`
 }
 
+type Posed interface {
+	Ident() string
+	Begin() lexer.Position
+	End() lexer.Position
+}
+
 type Entry struct {
 	Pos lexer.Position
 
@@ -127,10 +133,23 @@ type Method struct {
 }
 
 type Enum struct {
-	Pos lexer.Position
+	Pos    lexer.Position
+	EndPos lexer.Position
 
 	Name   string       `parser:"'enum' @Ident"`
 	Values []*EnumEntry `parser:"'{' ( @@ ( ';' )* )* '}'"`
+}
+
+func (v *Enum) Ident() string {
+	return v.Name
+}
+
+func (v *Enum) Begin() lexer.Position {
+	return v.Pos
+}
+
+func (v *Enum) End() lexer.Position {
+	return v.EndPos
 }
 
 type EnumEntry struct {
@@ -155,6 +174,18 @@ type Message struct {
 
 	Name    string          `parser:"'message' @Ident"`
 	Entries []*MessageEntry `parser:"'{' @@* '}'"`
+}
+
+func (v *Message) Ident() string {
+	return v.Name
+}
+
+func (v *Message) Begin() lexer.Position {
+	return v.Pos
+}
+
+func (v *Message) End() lexer.Position {
+	return v.EndPos
 }
 
 type MessageEntry struct {

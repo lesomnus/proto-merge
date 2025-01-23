@@ -86,6 +86,14 @@ message AuthorFilter {
 	}
 }
 
+message AuthorFilterByFoo {
+	FooState state = 1;
+}
+
+enum FooState {
+	FOO_UNSPECIFIED = 0;
+}
+
 message AuthorListResponse {
 	repeated Author items = 1;
 }
