@@ -22,7 +22,7 @@ type Posed interface {
 type Entry struct {
 	Pos lexer.Position
 
-	Syntax  string   `parser:"  'syntax' '=' @String"`
+	Syntax  Edition  `parser:"  @@"`
 	Package string   `parser:"| 'package' @(Ident ( '.' Ident )*)"`
 	Import  *Import  `parser:"| @@"`
 	Message *Message `parser:"| @@"`
@@ -30,6 +30,14 @@ type Entry struct {
 	Enum    *Enum    `parser:"| @@"`
 	Option  *Option  `parser:"| 'option' @@"`
 	Extend  *Extend  `parser:"| @@"`
+}
+
+type Edition struct {
+	Pos    lexer.Position
+	EndPos lexer.Position
+
+	Keyword string `parser:"@('syntax' | 'edition')"`
+	Value   string `parser:"'=' @String"`
 }
 
 type Import struct {
