@@ -1,9 +1,0 @@
-edition = "2023";
-
-package hday.cove;
-
-option go_package = "hday.io/cove/cvpb";
-
-message BlobRef {
-  bytes data = 9;
-}

@@ -125,7 +125,7 @@ type ServiceEntry struct {
 	EndPos lexer.Position
 
 	Option *Option `parser:"  'option' @@"`
-	Method *Method `parser:"| @@ ';'"`
+	Method *Method `parser:"| @@ ';'?"`
 }
 
 type Method struct {
