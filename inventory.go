@@ -183,6 +183,55 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			}
 
 			msgs_written[m.Ident()] = true
+
+			m_msg, is_msg := m.(*Message)
+			b_posed, has_b_version := b.Messages[m.Ident()]
+			b_msg, b_is_msg := b_posed.(*Message)
+			if !is_msg || !has_b_version || !b_is_msg {
+				mv(m.End())
+				continue
+			}
+
+			a_fields := map[string]bool{}
+			for _, e := range m_msg.Entries {
+				if e.Field != nil {
+					a_fields[e.Field.Name] = true
+				}
+			}
+
+			var extra []*MessageEntry
+			for _, e := range b_msg.Entries {
+				if e.Field != nil && !a_fields[e.Field.Name] {
+					extra = append(extra, e)
+				}
+			}
+
+			if len(extra) == 0 {
+				mv(m.End())
+				continue
+			}
+
+			close_offset := m_msg.EndPos.Offset - 1
+			for a.Content[close_offset] != '}' {
+				close_offset--
+			}
+
+			if last.Offset > close_offset {
+				// Already written (duplicate occurrence in ms_a); mv is a no-op.
+				mv(m.End())
+				continue
+			}
+
+			close_pos := m_msg.EndPos
+			close_pos.Offset = close_offset
+
+			mv(close_pos)
+			for _, e := range extra {
+				lf()
+				tab()
+				content := bytes.TrimRight(b.Content[e.Pos.Offset:e.EndPos.Offset], " \t\r\n")
+				w.Write(content)
+			}
 			mv(m.End())
 		}
 		for _, m := range ms_b {

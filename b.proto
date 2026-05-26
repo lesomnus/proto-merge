@@ -19,6 +19,10 @@ service BookService {
 	rpc Put (BookPutRequest) returns (Book);
 }
 
+message BookAddRequest {
+	string isbn = 4;
+}
+
 message BookPutRequest {
 	optional bytes id = 1;
 	string alias = 2;

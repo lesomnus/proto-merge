@@ -197,7 +197,8 @@ func (v *Message) End() lexer.Position {
 }
 
 type MessageEntry struct {
-	Pos lexer.Position
+	Pos    lexer.Position
+	EndPos lexer.Position
 
 	Enum       *Enum       `parser:"( @@"`
 	Option     *Option     `parser:" | 'option' @@"`
