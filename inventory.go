@@ -171,8 +171,117 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 		}
 	}
 
-	// Print messages
 	msgs_written := map[string]bool{}
+
+	// mergeOrWriteMessage writes m_msg from a.Content, injecting any extra fields
+	// found in b's version of the same message. Falls back to a plain mv if no
+	// extra fields exist or the message has already been written.
+	mergeOrWriteMessage := func(m_msg *Message) {
+		b_posed, has_b_version := b.Messages[m_msg.Ident()]
+		b_msg, b_is_msg := b_posed.(*Message)
+		if !has_b_version || !b_is_msg {
+			mv(m_msg.End())
+			return
+		}
+
+		// Collect all field names from a (top-level and inside oneofs).
+		a_fields := map[string]bool{}
+		for _, e := range m_msg.Entries {
+			if e.Field != nil {
+				a_fields[e.Field.Name] = true
+			}
+			if e.Oneof != nil {
+				for _, oe := range e.Oneof.Entries {
+					if oe.Field != nil {
+						a_fields[oe.Field.Name] = true
+					}
+				}
+			}
+		}
+
+		// Find extra top-level fields and extra fields inside named oneofs from b.
+		var extra_top []*MessageEntry
+		extra_oneof := map[string][]*OneofEntry{} // oneof name -> extra entries
+		for _, e := range b_msg.Entries {
+			if e.Field != nil && !a_fields[e.Field.Name] {
+				extra_top = append(extra_top, e)
+			}
+			if e.Oneof != nil {
+				for _, oe := range e.Oneof.Entries {
+					if oe.Field != nil && !a_fields[oe.Field.Name] {
+						extra_oneof[e.Oneof.Name] = append(extra_oneof[e.Oneof.Name], oe)
+					}
+				}
+			}
+		}
+
+		if len(extra_top) == 0 && len(extra_oneof) == 0 {
+			mv(m_msg.End())
+			return
+		}
+
+		close_offset := m_msg.EndPos.Offset - 1
+		for a.Content[close_offset] != '}' {
+			close_offset--
+		}
+
+		if last.Offset > close_offset {
+			// Already written (duplicate occurrence in ms_a).
+			mv(m_msg.End())
+			return
+		}
+
+		// Inject extra fields into matching oneofs in a.
+		for _, e := range m_msg.Entries {
+			if e.Oneof == nil {
+				continue
+			}
+			extras, ok := extra_oneof[e.Oneof.Name]
+			if !ok {
+				continue
+			}
+
+			oneof_close := e.Oneof.EndPos.Offset - 1
+			for a.Content[oneof_close] != '}' {
+				oneof_close--
+			}
+
+			oneof_close_pos := e.Oneof.EndPos
+			oneof_close_pos.Offset = oneof_close
+			mv(oneof_close_pos)
+
+			for _, oe := range extras {
+				// ';' is outside OneofEntry grammar, so find it explicitly.
+				end := oe.EndPos.Offset
+				for end < len(b.Content) && (b.Content[end] == ' ' || b.Content[end] == '\t') {
+					end++
+				}
+				if end < len(b.Content) && b.Content[end] == ';' {
+					end++
+				}
+				content := bytes.TrimRight(b.Content[oe.Pos.Offset:end], " \t\r\n")
+				lf()
+				tab()
+				tab()
+				w.Write(content)
+			}
+		}
+
+		// Inject extra top-level fields before the message's closing }.
+		close_pos := m_msg.EndPos
+		close_pos.Offset = close_offset
+
+		mv(close_pos)
+		for _, e := range extra_top {
+			lf()
+			tab()
+			content := bytes.TrimRight(b.Content[e.Pos.Offset:e.EndPos.Offset], " \t\r\n")
+			w.Write(content)
+		}
+		mv(m_msg.End())
+	}
+
+	// Print messages referenced by merged services.
 	for _, ms := range msgs {
 		ms_a := ms[:2]
 		ms_b := ms[2:]
@@ -181,65 +290,19 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			if m == nil {
 				continue
 			}
-
 			msgs_written[m.Ident()] = true
-
 			m_msg, is_msg := m.(*Message)
-			b_posed, has_b_version := b.Messages[m.Ident()]
-			b_msg, b_is_msg := b_posed.(*Message)
-			if !is_msg || !has_b_version || !b_is_msg {
+			if !is_msg {
 				mv(m.End())
 				continue
 			}
-
-			a_fields := map[string]bool{}
-			for _, e := range m_msg.Entries {
-				if e.Field != nil {
-					a_fields[e.Field.Name] = true
-				}
-			}
-
-			var extra []*MessageEntry
-			for _, e := range b_msg.Entries {
-				if e.Field != nil && !a_fields[e.Field.Name] {
-					extra = append(extra, e)
-				}
-			}
-
-			if len(extra) == 0 {
-				mv(m.End())
-				continue
-			}
-
-			close_offset := m_msg.EndPos.Offset - 1
-			for a.Content[close_offset] != '}' {
-				close_offset--
-			}
-
-			if last.Offset > close_offset {
-				// Already written (duplicate occurrence in ms_a); mv is a no-op.
-				mv(m.End())
-				continue
-			}
-
-			close_pos := m_msg.EndPos
-			close_pos.Offset = close_offset
-
-			mv(close_pos)
-			for _, e := range extra {
-				lf()
-				tab()
-				content := bytes.TrimRight(b.Content[e.Pos.Offset:e.EndPos.Offset], " \t\r\n")
-				w.Write(content)
-			}
-			mv(m.End())
+			mergeOrWriteMessage(m_msg)
 		}
 		for _, m := range ms_b {
 			if m == nil {
 				continue
 			}
-			_, ok := msgs_written[m.Ident()]
-			if ok {
+			if msgs_written[m.Ident()] {
 				continue
 			}
 			msgs_written[m.Ident()] = true
@@ -247,7 +310,27 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 		}
 	}
 
-	// Write out rest of the content.
+	// Final pass: write remaining a messages not yet handled, merging fields from b.
+	for _, e := range a.Proto.Entries {
+		if e.Message == nil {
+			continue
+		}
+		m := e.Message
+		if m.Begin().Offset < last.Offset {
+			continue // already written by the service-based pass above
+		}
+		if msgs_written[m.Ident()] {
+			// Written from a.Content via ms_a; ensure last is advanced past it.
+			if m.End().Offset > last.Offset {
+				last = m.End()
+			}
+			continue
+		}
+		msgs_written[m.Ident()] = true
+		mergeOrWriteMessage(m)
+	}
+
+	// Write any remaining a.Content (trailing content after the last message).
 	w.Write(a.Content[last.Offset:])
 
 	return nil

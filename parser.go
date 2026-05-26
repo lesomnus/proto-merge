@@ -211,14 +211,16 @@ type MessageEntry struct {
 }
 
 type Oneof struct {
-	Pos lexer.Position
+	Pos    lexer.Position
+	EndPos lexer.Position
 
 	Name    string        `parser:"'oneof' @Ident"`
 	Entries []*OneofEntry `parser:"'{' ( @@ ';'* )* '}'"`
 }
 
 type OneofEntry struct {
-	Pos lexer.Position
+	Pos    lexer.Position
+	EndPos lexer.Position
 
 	Field  *Field  `parser:"  @@"`
 	Option *Option `parser:"| 'option' @@"`

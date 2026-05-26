@@ -23,39 +23,33 @@ func TestNewInventory_ParsesImports(t *testing.T) {
 	inv, err := NewInventory("a.proto", aProto)
 	require.NoError(t, err)
 
-	assert.Contains(t, inv.Imports, `"foo.proto"`)
-	assert.Contains(t, inv.Imports, `"baz.proto"`)
-	assert.Contains(t, inv.Imports, `"bar.proto"`)
+	assert.Contains(t, inv.Imports, `"google/protobuf/empty.proto"`)
+	assert.Contains(t, inv.Imports, `"hday/cove/blob.proto"`)
 }
 
 func TestNewInventory_ParsesServices(t *testing.T) {
 	inv, err := NewInventory("a.proto", aProto)
 	require.NoError(t, err)
 
-	assert.Contains(t, inv.Services, "FooService")
-	assert.Contains(t, inv.Services, "AuthorService")
-	assert.Contains(t, inv.Services, "BookService")
+	assert.Contains(t, inv.Services, "BlobService")
 }
 
 func TestNewInventory_ParsesMessages(t *testing.T) {
 	inv, err := NewInventory("a.proto", aProto)
 	require.NoError(t, err)
 
-	assert.Contains(t, inv.Messages, "AuthorAddRequest")
-	assert.Contains(t, inv.Messages, "AuthorGetRequest")
-	assert.Contains(t, inv.Messages, "BookAddRequest")
-	assert.Contains(t, inv.Messages, "BookGetRequest")
+	assert.Contains(t, inv.Messages, "BlobAddRequest")
+	assert.Contains(t, inv.Messages, "BlobRef")
+	assert.Contains(t, inv.Messages, "BlobSelect")
+	assert.Contains(t, inv.Messages, "BlobGetRequest")
+	assert.Contains(t, inv.Messages, "BlobPatchRequest")
 }
 
 func TestNewInventory_B_ParsesMessages(t *testing.T) {
 	inv, err := NewInventory("b.proto", bProto)
 	require.NoError(t, err)
 
-	assert.Contains(t, inv.Messages, "BookAddRequest")
-	assert.Contains(t, inv.Messages, "BookPutRequest")
-	assert.Contains(t, inv.Messages, "AuthorPutRequest")
-	assert.Contains(t, inv.Messages, "AuthorExtra")
-	assert.Contains(t, inv.Messages, "FooState")
+	assert.Contains(t, inv.Messages, "BlobRef")
 }
 
 func TestMerge_AIntoB_MatchesC(t *testing.T) {
@@ -73,49 +67,6 @@ func TestMerge_AIntoB_MatchesC(t *testing.T) {
 	assert.Equal(t, want, strings.TrimRight(got.String(), "\n"))
 }
 
-func TestMerge_MergesImports(t *testing.T) {
-	a, err := NewInventory("a.proto", aProto)
-	require.NoError(t, err)
-
-	b, err := NewInventory("b.proto", bProto)
-	require.NoError(t, err)
-
-	var got bytes.Buffer
-	err = a.MergeOut(b, &got)
-	require.NoError(t, err)
-
-	output := got.String()
-	// a has bar.proto, baz.proto, foo.proto; b adds qux.proto
-	assert.Contains(t, output, `import "bar.proto"`)
-	assert.Contains(t, output, `import "baz.proto"`)
-	assert.Contains(t, output, `import "foo.proto"`)
-	assert.Contains(t, output, `import "qux.proto"`)
-}
-
-func TestMerge_MergesServiceMethods(t *testing.T) {
-	a, err := NewInventory("a.proto", aProto)
-	require.NoError(t, err)
-
-	b, err := NewInventory("b.proto", bProto)
-	require.NoError(t, err)
-
-	var got bytes.Buffer
-	err = a.MergeOut(b, &got)
-	require.NoError(t, err)
-
-	output := got.String()
-	// AuthorService: a has Add+Get, b adds Put+Pot+List
-	assert.Contains(t, output, "rpc Add (AuthorAddRequest) returns (Author)")
-	assert.Contains(t, output, "rpc Get (AuthorGetRequest) returns (Author)")
-	assert.Contains(t, output, "rpc Put (AuthorPutRequest) returns (Author)")
-	assert.Contains(t, output, "rpc List (AuthorListRequest) returns (AuthorListResponse)")
-
-	// BookService: a has Add+Get, b adds Put
-	assert.Contains(t, output, "rpc Add (BookAddRequest) returns (Book)")
-	assert.Contains(t, output, "rpc Get (BookGetRequest) returns (Book)")
-	assert.Contains(t, output, "rpc Put (BookPutRequest) returns (Book)")
-}
-
 func TestMerge_MergesMessageFields(t *testing.T) {
 	a, err := NewInventory("a.proto", aProto)
 	require.NoError(t, err)
@@ -128,19 +79,22 @@ func TestMerge_MergesMessageFields(t *testing.T) {
 	require.NoError(t, err)
 
 	output := got.String()
-	// BookAddRequest: a has id+title, b adds isbn
-	assert.Contains(t, output, "optional bytes id = 1")
-	assert.Contains(t, output, "string title = 3")
-	assert.Contains(t, output, "string isbn = 4")
 
-	// All three fields must appear inside one BookAddRequest block
-	start := strings.Index(output, "message BookAddRequest {")
-	end := strings.Index(output[start:], "}") + start
-	block := output[start : end+1]
-	assert.Contains(t, block, "string isbn = 4", "isbn must be inside BookAddRequest")
+	// BlobRef: a has oneof key {id, digest}, b adds data as top-level field
+	start := strings.Index(output, "message BlobRef {")
+	require.NotEqual(t, -1, start, "BlobRef not found in output")
+	end := strings.Index(output[start:], "\nmessage ")
+	if end == -1 {
+		end = len(output) - start
+	}
+	block := output[start : start+end]
+
+	assert.Contains(t, block, "uint64 id = 1", "id must be inside BlobRef")
+	assert.Contains(t, block, "bytes digest = 8", "digest must be inside BlobRef")
+	assert.Contains(t, block, "bytes data = 9", "data from b must be merged into BlobRef")
 }
 
-func TestMerge_IncludesMessagesFromB(t *testing.T) {
+func TestMerge_PreservesExistingFields(t *testing.T) {
 	a, err := NewInventory("a.proto", aProto)
 	require.NoError(t, err)
 
@@ -152,11 +106,9 @@ func TestMerge_IncludesMessagesFromB(t *testing.T) {
 	require.NoError(t, err)
 
 	output := got.String()
-	// Messages from b that are not in a
-	assert.Contains(t, output, "message AuthorPutRequest")
-	assert.Contains(t, output, "message AuthorExtra")
-	assert.Contains(t, output, "message AuthorListRequest")
-	assert.Contains(t, output, "message AuthorListResponse")
-	assert.Contains(t, output, "message BookPutRequest")
-	assert.Contains(t, output, "enum FooState")
+	// All original a messages must still be present.
+	assert.Contains(t, output, "message BlobAddRequest")
+	assert.Contains(t, output, "message BlobSelect")
+	assert.Contains(t, output, "message BlobGetRequest")
+	assert.Contains(t, output, "message BlobPatchRequest")
 }

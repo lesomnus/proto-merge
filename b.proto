@@ -1,63 +1,9 @@
-syntax = "proto3";
+edition = "2023";
 
-package example.library;
+package hday.cove;
 
-import "foo.proto";
-import "baz.proto";
-import "qux.proto";
+option go_package = "hday.io/cove/cvpb";
 
-service AuthorService {
-	// Auth Put
-	// AASDF
-	rpc Put (AuthorPutRequest) returns (Author);
-	rpc Pot (AuthorPutRequest) returns (Author);
-	rpc List (AuthorListRequest) returns (AuthorListResponse);
-}
-
-service BookService {
-	// Book Put
-	rpc Put (BookPutRequest) returns (Book);
-}
-
-message BookAddRequest {
-	string isbn = 4;
-}
-
-message BookPutRequest {
-	optional bytes id = 1;
-	string alias = 2;
-}
-
-message AuthorPutRequest {
-	optional bytes id = 1;
-	string alias = 2;
-	AuthorExtra extra = 3;
-}
-
-message AuthorExtra {
-	string pizza = 1;
-}
-
-enum FooState {
-	FOO_UNSPECIFIED = 0;
-}
-
-message AuthorFilterByFoo {
-	FooState state = 1;
-}
-
-message AuthorFilter {
-	oneof kind {
-		bytes id = 1;
-		string alias = 2;
-		AuthorFilterByFoo foo = 3;
-	}
-}
-
-message AuthorListRequest {
-	AuthorFilter filter = 1;
-}
-
-message AuthorListResponse {
-	repeated Author items = 1;
+message BlobRef {
+  bytes data = 9;
 }
