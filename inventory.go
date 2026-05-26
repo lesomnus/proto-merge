@@ -60,6 +60,36 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 	return i, nil
 }
 
+// leadingCommentStart returns the byte offset at which any // comment block
+// immediately preceding the token at offset begins. Returns offset unchanged
+// when no comment is found.
+func leadingCommentStart(content []byte, offset int) int {
+	lineStart := offset
+	for lineStart > 0 && content[lineStart-1] != '\n' {
+		lineStart--
+	}
+	result := -1
+	pos := lineStart
+	for pos > 0 {
+		pos-- // step past the '\n' ending the previous line
+		lineEnd := pos
+		for pos > 0 && content[pos-1] != '\n' {
+			pos--
+		}
+		prevLineStart := pos
+		line := bytes.TrimLeft(content[prevLineStart:lineEnd], " \t")
+		if bytes.HasPrefix(line, []byte("//")) {
+			result = prevLineStart
+		} else {
+			break
+		}
+	}
+	if result < 0 {
+		return offset
+	}
+	return result
+}
+
 // detectIndent returns the whitespace prefix of the line at offset in content.
 // Falls back to a single tab if the prefix contains non-whitespace characters.
 func detectIndent(content []byte, offset int) []byte {
@@ -304,6 +334,17 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 
 		mv(close_pos)
 		for _, e := range extra_top {
+			start := leadingCommentStart(b.Content, e.Pos.Offset)
+			if start < e.Pos.Offset {
+				comment_block := bytes.TrimRight(b.Content[start:e.Pos.Offset], " \t\r\n")
+				for _, line := range bytes.Split(comment_block, []byte("\n")) {
+					lf()
+					if stripped := bytes.TrimLeft(line, " \t"); len(stripped) > 0 {
+						w.Write(msg_indent)
+						w.Write(stripped)
+					}
+				}
+			}
 			lf()
 			w.Write(msg_indent)
 			content := bytes.TrimRight(b.Content[e.Pos.Offset:e.EndPos.Offset], " \t\r\n")
@@ -337,7 +378,8 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 				continue
 			}
 			msgs_written[m.Ident()] = true
-			w.Write(b.Content[m.Begin().Offset:m.End().Offset])
+			start := leadingCommentStart(b.Content, m.Begin().Offset)
+			w.Write(b.Content[start:m.End().Offset])
 		}
 	}
 
@@ -367,9 +409,10 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			continue
 		}
 		msgs_written[e.Message.Name] = true
+		start := leadingCommentStart(b.Content, e.Message.Begin().Offset)
 		lf()
 		lf()
-		w.Write(b.Content[e.Message.Begin().Offset:e.Message.End().Offset])
+		w.Write(b.Content[start:e.Message.End().Offset])
 	}
 
 	// Write any remaining a.Content (trailing content after the last message).
