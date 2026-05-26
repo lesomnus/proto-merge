@@ -6,6 +6,6 @@ message Ref {
   oneof key {
     uint64 id = 1;
     string slug = 2;
-		string uuid = 3;
+    string uuid = 3;
   }
 }

@@ -5,3 +5,7 @@ package sample;
 message Foo {
   uint64 id = 1;
 }
+
+message Bar {
+	string name = 2;
+}

@@ -60,6 +60,26 @@ func NewInventory(filename string, content []byte) (*Inventory, error) {
 	return i, nil
 }
 
+// detectIndent returns the whitespace prefix of the line at offset in content.
+// Falls back to a single tab if the prefix contains non-whitespace characters.
+func detectIndent(content []byte, offset int) []byte {
+	i := offset - 1
+	for i >= 0 && content[i] != '\n' {
+		i--
+	}
+	if i < 0 {
+		return []byte("\t")
+	}
+	indent := content[i+1 : offset]
+	for _, b := range indent {
+		if b != ' ' && b != '\t' {
+			return []byte("\t")
+		}
+	}
+	// Return a copy to avoid aliasing with content when the caller appends.
+	return append([]byte{}, indent...)
+}
+
 func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 	// First two messages for each array are from the `a` and rest are from the `b`.
 	msgs := [][]Posed{{nil, nil}}
@@ -173,10 +193,10 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 
 	msgs_written := map[string]bool{}
 
-	// mergeOrWriteMessage writes m_msg from a.Content, injecting any extra fields
+	// merge_or_write_message writes m_msg from a.Content, injecting any extra fields
 	// found in b's version of the same message. Falls back to a plain mv if no
 	// extra fields exist or the message has already been written.
-	mergeOrWriteMessage := func(m_msg *Message) {
+	merge_or_write_message := func(m_msg *Message) {
 		b_posed, has_b_version := b.Messages[m_msg.Ident()]
 		b_msg, b_is_msg := b_posed.(*Message)
 		if !has_b_version || !b_is_msg {
@@ -220,6 +240,12 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			return
 		}
 
+		// Detect field-level indentation from the first entry in the message.
+		msg_indent := []byte("\t")
+		if len(m_msg.Entries) > 0 {
+			msg_indent = detectIndent(a.Content, m_msg.Entries[0].Pos.Offset)
+		}
+
 		close_offset := m_msg.EndPos.Offset - 1
 		for a.Content[close_offset] != '}' {
 			close_offset--
@@ -239,6 +265,12 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			extras, ok := extra_oneof[e.Oneof.Name]
 			if !ok {
 				continue
+			}
+
+			// Detect field-level indentation inside this oneof.
+			oneof_indent := append(msg_indent, msg_indent...)
+			if len(e.Oneof.Entries) > 0 {
+				oneof_indent = detectIndent(a.Content, e.Oneof.Entries[0].Pos.Offset)
 			}
 
 			oneof_close := e.Oneof.EndPos.Offset - 1
@@ -261,8 +293,7 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 				}
 				content := bytes.TrimRight(b.Content[oe.Pos.Offset:end], " \t\r\n")
 				lf()
-				tab()
-				tab()
+				w.Write(oneof_indent)
 				w.Write(content)
 			}
 		}
@@ -274,7 +305,7 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 		mv(close_pos)
 		for _, e := range extra_top {
 			lf()
-			tab()
+			w.Write(msg_indent)
 			content := bytes.TrimRight(b.Content[e.Pos.Offset:e.EndPos.Offset], " \t\r\n")
 			w.Write(content)
 		}
@@ -296,7 +327,7 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 				mv(m.End())
 				continue
 			}
-			mergeOrWriteMessage(m_msg)
+			merge_or_write_message(m_msg)
 		}
 		for _, m := range ms_b {
 			if m == nil {
@@ -327,7 +358,18 @@ func (a *Inventory) MergeOut(b *Inventory, w io.Writer) error {
 			continue
 		}
 		msgs_written[m.Ident()] = true
-		mergeOrWriteMessage(m)
+		merge_or_write_message(m)
+	}
+
+	// Write new messages from b that don't exist in a.
+	for _, e := range b.Proto.Entries {
+		if e.Message == nil || msgs_written[e.Message.Name] {
+			continue
+		}
+		msgs_written[e.Message.Name] = true
+		lf()
+		lf()
+		w.Write(b.Content[e.Message.Begin().Offset:e.Message.End().Offset])
 	}
 
 	// Write any remaining a.Content (trailing content after the last message).
